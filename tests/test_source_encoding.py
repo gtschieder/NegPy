@@ -30,6 +30,12 @@ def _icc(name: str) -> bytes:
         return fh.read()
 
 
+def _scanner_icc(name: str) -> bytes:
+    profile = bytearray(_icc(name))
+    profile[12:16] = b"scnr"
+    return bytes(profile)
+
+
 def _rgb16(seed: int = 0) -> np.ndarray:
     return np.random.default_rng(seed).integers(0, 30000, (16, 24, 3), dtype=np.uint16)
 
@@ -95,6 +101,44 @@ def test_linear_and_gamma_override_the_profile(tmp_path) -> None:
     assert metadata["color_space"] is None
 
 
+def test_scanner_profile_decode_applies_the_embedded_icc(tmp_path) -> None:
+    data = np.zeros((4, 4, 3), dtype=np.uint16)
+    data[..., 0] = 50000
+    data[..., 1] = 25000
+    data[..., 2] = 10000
+    icc = _scanner_icc("sRGB-v4.icc")
+    path = _write(tmp_path, data, icc)
+    linear, metadata = _load(path, "scanner_profile")
+
+    encoded = se.imagecodecs.cms_transform(
+        data,
+        icc,
+        _icc("AdobeCompat-v4.icc"),
+        colorspace="RGB",
+        outcolorspace="RGB",
+        intent=1,
+        flags=0x2000,
+    )
+    expected = working_oetf_decode(encoded.astype(np.float32) / np.float32(65535.0))
+    np.testing.assert_allclose(linear, expected, atol=1e-6)
+    assert metadata["source_encoding"] == "scanner_profile"
+    assert metadata["color_space"] == ColorSpace.ADOBE_RGB.value
+
+
+def test_scanner_profile_decode_rejects_missing_or_non_rgb_profile(tmp_path) -> None:
+    data = _rgb16()
+    path = _write(tmp_path, data)
+    with pytest.raises(ValueError, match="does not contain an RGB scanner profile"):
+        _load(path, "scanner_profile")
+
+
+def test_scanner_profile_decode_requires_16_bit_rgb(tmp_path) -> None:
+    data = np.zeros((4, 4, 3), dtype=np.uint8)
+    path = _write(tmp_path, data, _scanner_icc("sRGB-v4.icc"))
+    with pytest.raises(ValueError, match="16-bit RGB TIFF"):
+        _load(path, "scanner_profile")
+
+
 def test_auto_without_a_profile_takes_the_untagged_rule(tmp_path) -> None:
     data8 = np.linspace(0, 255, 16 * 24 * 3).reshape(16, 24, 3).astype(np.uint8)
     path = str(tmp_path / "photo.tif")
@@ -130,6 +174,9 @@ def test_positive_decode_and_tokens_follow_the_encoding() -> None:
     assert linear_raw_token(slide) != linear_raw_token(replace(slide, source_encoding=SourceEncoding.AUTO))
     a = WorkspaceConfig(process=slide)
     assert source_token(a) != source_token(replace(a, process=replace(slide, source_encoding=SourceEncoding.LINEAR)))
+    profiled = WorkspaceConfig(process=replace(slide, use_embedded_scanner_profile=True))
+    assert positive_decode(profiled.process) == "scanner_profile"
+    assert source_token(profiled) != source_token(a)
     negative = WorkspaceConfig()
     assert "|pd" not in source_token(negative) and "|pd" not in linear_raw_token(negative.process)
 

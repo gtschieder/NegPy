@@ -166,6 +166,10 @@ def test_scanner_lists_one_device_per_panel_shape():
     assert caps["sim:feeder"].adapter_frame_capacity == 6
     assert caps["sim:prescan"].prescan
     assert caps["sim:roll"].roll_discovery
+    opticfilm_me = caps["sim:prescan-me"]
+    assert opticfilm_me.prescan and opticfilm_me.multi_exposure
+    assert opticfilm_me.multi_exposure_fixed and opticfilm_me.max_n_passes > 1
+    assert opticfilm_me.multi_exposure_at(1800) and opticfilm_me.multi_pass_at(1800)
 
 
 def test_scan_returns_a_negative_with_ir():

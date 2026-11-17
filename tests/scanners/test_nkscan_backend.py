@@ -9,8 +9,16 @@ import numpy as np
 import pytest
 
 from negpy.infrastructure.scanners.base import StripReturned, TransientScanError
-from negpy.infrastructure.scanners.nkscan_backend import _crop_frame, _offset_units, _shift_frame, _stack_rgb
-from negpy.infrastructure.scanners.params import FILM_TYPES, ScanMode, ScanParams
+from negpy.infrastructure.scanners.nkscan_backend import (
+    adaptive_rgb_exposures,
+    _crop_frame,
+    _merge_exposure_scans,
+    _offset_units,
+    _shift_frame,
+    _stack_rgb,
+)
+from negpy.infrastructure.scanners.params import CoolscanExposureMode, FILM_TYPES, ScanMode, ScanParams
+from negpy.infrastructure.scanners.result import ScanResult
 from tests.scanners import fake_nkscan
 from tests.scanners.fake_nkscan import DEVICE_ID, FRAMES, FakeCapabilities, make_backend
 
@@ -47,6 +55,7 @@ def test_capabilities_announce_the_nkscan_only_controls() -> None:
     assert caps.max_samples == 16
     assert "135" in caps.film_formats
     assert caps.ir_channel and caps.can_eject
+    assert caps.exposure_bracketing
     # Neither is controllable through the bindings, so neither gets a control.
     assert not caps.autofocus and not caps.auto_exposure
     assert caps.exposure_time_us is None
@@ -762,6 +771,139 @@ def test_analog_gain_outside_the_range_is_refused_before_the_unit_moves() -> Non
     with pytest.raises(RuntimeError, match="Analog Gain must be"):
         _scan(backend, dataclasses.replace(_PARAMS, channel_gain_ev=(2.5, 0.0, 0.0)))
     assert module.opened == []
+
+
+def test_fixed_multi_exposure_scans_again_four_stops_brighter() -> None:
+    backend, module = make_backend()
+    _scan(backend, dataclasses.replace(_PARAMS, coolscan_exposure_mode=CoolscanExposureMode.FIXED))
+
+    scans = module.opened[-1].scans
+    assert len(scans) == 2
+    assert scans[0]["exposures"] is None
+    assert scans[1]["exposures"] == {"red": 16, "green": 32, "blue": 48}
+    assert scans[0]["infrared"] is False and scans[1]["infrared"] is False
+
+
+def test_fixed_multi_exposure_keeps_ir_only_from_the_base_scan() -> None:
+    backend, module = make_backend()
+    result = _scan(
+        backend,
+        dataclasses.replace(_PARAMS, capture_ir=True, coolscan_exposure_mode=CoolscanExposureMode.FIXED),
+    )
+
+    scans = module.opened[-1].scans
+    assert [scan["infrared"] for scan in scans] == [True, False]
+    assert result.ir is not None
+
+
+def test_adaptive_rgb_exposure_sets_a_separate_gain_for_each_channel() -> None:
+    rgb = np.empty((100, 100, 3), dtype=np.uint16)
+    rgb[..., 0] = 5_000
+    rgb[..., 1] = 2_500
+    rgb[..., 2] = 500
+
+    selected = adaptive_rgb_exposures(
+        rgb,
+        {"red": 100, "green": 100, "blue": 100, "infrared": 500},
+    )
+
+    assert selected == {"red": 200, "green": 400, "blue": 1_600, "infrared": 500}
+
+
+def test_adaptive_rgb_exposure_limits_gain_to_preserve_highlight_headroom() -> None:
+    rgb = np.zeros((100, 100, 3), dtype=np.uint16)
+    rgb[..., 0] = np.linspace(1_000, 50_000, 100, dtype=np.uint16)[:, None]
+    rgb[..., 1:] = 5_000
+
+    selected = adaptive_rgb_exposures(rgb, {"red": 100, "green": 100, "blue": 100})
+
+    assert 100 < selected["red"] < 200
+    assert selected["green"] == selected["blue"] == 200
+
+
+def test_adaptive_rgb_multi_exposure_uses_the_analyzed_channel_exposures() -> None:
+    backend, module = make_backend(scan_values=(5_000, 2_500, 500))
+    params = dataclasses.replace(
+        _PARAMS,
+        exposures={"red": 100, "green": 100, "blue": 100},
+        coolscan_exposure_mode=CoolscanExposureMode.ADAPTIVE_RGB,
+    )
+
+    _scan(backend, params)
+
+    scans = module.opened[-1].scans
+    assert len(scans) == 2
+    assert scans[0]["exposures"] == {"red": 100, "green": 100, "blue": 100}
+    assert scans[1]["exposures"] == {"red": 200, "green": 400, "blue": 1_600}
+
+
+def test_adaptive_rgb_plus4_uses_three_scans_and_stacks_from_the_adaptive_scan() -> None:
+    backend, module = make_backend(
+        scan_values=(5_000, 2_500, 500),
+        scan_value_sequence=((5_000, 2_500, 500), (10_000, 10_000, 10_000), (65_535, 65_535, 65_535)),
+    )
+    params = dataclasses.replace(
+        _PARAMS,
+        exposures={"red": 100, "green": 100, "blue": 100},
+        coolscan_exposure_mode=CoolscanExposureMode.ADAPTIVE_RGB_PLUS4,
+    )
+
+    result = _scan(backend, params)
+
+    scans = module.opened[-1].scans
+    assert len(scans) == 3
+    assert scans[0]["exposures"] == {"red": 100, "green": 100, "blue": 100}
+    assert scans[1]["exposures"] == {"red": 200, "green": 400, "blue": 1_600}
+    assert scans[2]["exposures"] == {"red": 3_200, "green": 6_400, "blue": 25_600}
+    assert result.exposures == scans[1]["exposures"]
+    assert result.rgb[0, 0, 0] == 10_000
+
+
+def test_adaptive_rgb_plus4_preserves_ir_from_the_analysis_scan() -> None:
+    backend, module = make_backend(scan_values=(5_000, 2_500, 500))
+    params = dataclasses.replace(
+        _PARAMS,
+        capture_ir=True,
+        exposures={"red": 100, "green": 100, "blue": 100},
+        coolscan_exposure_mode=CoolscanExposureMode.ADAPTIVE_RGB_PLUS4,
+    )
+
+    result = _scan(backend, params)
+
+    assert len(module.opened[-1].scans) == 3
+    assert module.opened[-1].scans[0]["infrared"] is True
+    assert module.opened[-1].scans[1]["infrared"] is False
+    assert result.ir is not None
+    assert result.ir_valid_mask is not None
+
+
+def test_multi_exposure_merge_normalizes_the_long_scan_and_uses_base_for_clipped_highlights() -> None:
+    short_rgb = np.array([[[100, 200, 300], [10_000, 20_000, 30_000]]], dtype=np.uint16)
+    long_rgb = np.array([[[1_600, 6_400, 14_400], [65_535, 65_535, 65_535]]], dtype=np.uint16)
+    short = ScanResult(short_rgb, None, 1000, "LS-50", exposures={"red": 1, "green": 2, "blue": 3})
+    long = ScanResult(long_rgb, None, 1000, "LS-50", exposures={"red": 16, "green": 64, "blue": 144})
+
+    merged = _merge_exposure_scans(short, long)
+
+    np.testing.assert_array_equal(merged, short_rgb)
+
+
+def test_multi_exposure_merge_rejects_zero_exposure_values() -> None:
+    rgb = np.ones((1, 1, 3), dtype=np.uint16)
+    short = ScanResult(rgb, None, 1000, "LS-50", exposures={"red": 0, "green": 1, "blue": 1})
+    long = ScanResult(rgb, None, 1000, "LS-50", exposures={"red": 16, "green": 16, "blue": 16})
+
+    with pytest.raises(RuntimeError, match="invalid exposure values"):
+        _merge_exposure_scans(short, long)
+
+
+def test_multi_exposure_merge_rejects_missing_channel_exposure_values() -> None:
+    rgb = np.ones((1, 1, 3), dtype=np.uint16)
+    short = ScanResult(rgb, None, 1000, "LS-50", exposures={"red": 1, "green": 1})
+    long = ScanResult(rgb, None, 1000, "LS-50", exposures={"red": 16, "green": 16, "blue": 16})
+
+    with pytest.raises(RuntimeError, match="all three color channels"):
+        _merge_exposure_scans(short, long)
 
 
 def test_a_load_that_fails_still_leaves_the_return_to_report() -> None:

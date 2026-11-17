@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from dataclasses import dataclass, field, fields
 
-from negpy.infrastructure.scanners.params import MAX_N_PASSES, MIN_N_PASSES, MultiExposureMode
+from negpy.infrastructure.scanners.params import CoolscanExposureMode, MAX_N_PASSES, MIN_N_PASSES, MultiExposureMode
 from negpy.infrastructure.scanners.registry import DEFAULT_BACKEND_ID
 
 Rect = tuple[float, float, float, float]
@@ -66,6 +66,7 @@ class ScannerSettings:
     # Analog Gain in stops: all channels, then red, green and blue on top.
     analog_gain_ev: float = 0.0
     channel_gain_ev: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    coolscan_exposure_mode: str = CoolscanExposureMode.OFF.value
 
     def __post_init__(self) -> None:
         # JSON round-trips tuples as lists and dict keys as strings; coerce back.
@@ -96,6 +97,10 @@ class ScannerSettings:
         every unrelated preference with it.
         """
         data = dict(data)
+        if "coolscan_exposure_mode" not in data and data.pop("multi_pass_exposure", False):
+            data["coolscan_exposure_mode"] = CoolscanExposureMode.FIXED.value
+        if data.get("coolscan_exposure_mode") not in set(CoolscanExposureMode):
+            data["coolscan_exposure_mode"] = CoolscanExposureMode.OFF.value
         # Pre-mode blobs only ever had one multi-exposure behavior (today's "adaptive"): a
         # checked box meant exactly that, unchecked meant none. A device without "fixed" masks it
         # in the Scan panel.

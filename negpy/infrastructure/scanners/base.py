@@ -89,6 +89,8 @@ class ScannerCapabilities:
     exposure_lock: bool = False
     #: The metered exposure can be scaled per channel before the pass (`ScanParams.analog_gain_ev`).
     analog_gain: bool = False
+    #: A second RGB pass can use a longer exposure and merge shadow detail with the first.
+    exposure_bracketing: bool = False
 
     def multi_exposure_at(self, dpi: int) -> bool:
         return self.multi_exposure and (not self.multi_exposure_dpi or int(dpi) in self.multi_exposure_dpi)

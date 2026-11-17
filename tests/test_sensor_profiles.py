@@ -158,6 +158,13 @@ def test_sidebar_profile_change_bakes_matrix_and_clears_bounds(qapp, tmp_path):
     assert kwargs["sensor_matrix"] is None
 
 
+def test_sidebar_scanner_profile_toggle_uses_sensor_roll_card(qapp):
+    controller, sidebar = _sensor_sidebar()
+    sidebar._on_scanner_profile_toggled(True)
+
+    controller.set_roll_default.assert_called_once_with("sensor", use_embedded_scanner_profile=True)
+
+
 def test_sidebar_sync_rebuilds_combo_after_save(qapp, tmp_path):
     controller, sidebar = _sensor_sidebar()
     assert sidebar.sensor_combo.count() == 1

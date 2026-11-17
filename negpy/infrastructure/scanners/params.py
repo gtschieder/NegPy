@@ -26,6 +26,15 @@ class MultiExposureMode(StrEnum):
     FIXED = "fixed"
 
 
+class CoolscanExposureMode(StrEnum):
+    """How Coolscan exposure brackets are chosen and merged."""
+
+    OFF = "off"
+    FIXED = "fixed"
+    ADAPTIVE_RGB = "adaptive_rgb"
+    ADAPTIVE_RGB_PLUS4 = "adaptive_rgb_plus4"
+
+
 #: Repeats of the same exposure to stack for an SNR gain (pyopticfilm's `n_passes`); 1 = no
 #: stacking. This module must not import pyopticfilm directly (only plustek_backend.py may,
 #: see test_only_adapter_imports_plustek_driver), so this mirrors — rather than imports —
@@ -81,6 +90,8 @@ class ScanParams:
     # and blue on top. Only a backend with ScannerCapabilities.analog_gain reads it.
     analog_gain_ev: float = 0.0
     channel_gain_ev: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # Capture and merge a second Coolscan exposure, optionally selected per RGB channel.
+    coolscan_exposure_mode: CoolscanExposureMode = CoolscanExposureMode.OFF
 
     @property
     def has_analog_gain(self) -> bool:
@@ -89,6 +100,9 @@ class ScanParams:
 
 #: Analog Gain range in stops, for all channels and for each one, as in Nikon Scan.
 ANALOG_GAIN_EV_RANGE = (-2.0, 2.0)
+COOLSCAN_MAX_EXPOSURE_INCREASE_EV = 4.0
+ADAPTIVE_RGB_SHADOW_TARGET = 10_000.0
+ADAPTIVE_RGB_HIGHLIGHT_LIMIT = 0.90 * 65_535.0
 
 
 class FilmType(StrEnum):

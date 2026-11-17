@@ -525,6 +525,8 @@ Corrects color errors that come from your light, camera and film.
 *   **Strength**: how strongly the matrix applies.
 *   The swatch button opens **Measure from Chart** (color negatives): it measures a matrix from a ColorChecker 24 or SpyderCheckr 24 shot on the film. Drag the four dots onto the corner patches.
 
+*   **Scanner ICC** (Positive TIFF): applies the embedded scanner profile to interpret the TIFF's RGB values. It requires a 16-bit RGB TIFF with a scanner profile.
+
 **Hue Trim** (camera with narrowband light): turns all hues, for a light that makes yellows orange or greens olive. Keep 0 for white light. Unlike the sensor profile, it also works on slides.
 
 <!-- panel:fade -->
@@ -769,6 +771,7 @@ NegPy keeps macOS and Windows awake while it scans. On Linux, turn off automatic
 *   **Film format**: the frame length (135, 66, 645 and others). **Auto** works where the holder sets it.
 *   **Resolution** and **Bit depth**: the scan's dpi and bits per channel.
 *   **Scan mode** (Plustek): **Multi-Pass** averages several scans for less noise; **Adaptive Multi-Exposure** combines a short and a long exposure for more range, with the long exposure set from each frame; **Fixed Multi-Exposure** uses the scanner's one long exposure on every frame, as SilverFast does (8200i SE, 8100 V2 and 8300i SE). The 7600i v2 offers Adaptive Multi-Exposure but not Multi-Pass.
+*   **Multi-Exposure** (Coolscan): **Off** takes one scan. **Fixed +4 EV** adds a scan at four stops more exposure. **Adaptive RGB** analyzes each color channel in the first scan, sets separate increases up to +4 EV, and merges both scans. **Adaptive RGB +4 EV** uses the first scan only to set channel exposures. It uses the adaptive scan as the base, then merges a third scan four stops brighter. For each bracket, the merge uses the longer scan for shadows and limits highlight clipping.
 *   **Samples** (Coolscan): reads each line several times, for less noise in the shadows. Slower.
 *   **Infrared**: **IR** scans an infrared channel, for dust removal on the Retouch card. **ICE** (Coolscan) removes the dust in the scanner instead. A scanner without ICE shows one **IR** toggle. Not for B&W or Kodachrome.
 *   **Superfine** (Coolscan): scans one line per pass. Slower.

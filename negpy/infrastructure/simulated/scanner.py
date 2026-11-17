@@ -79,6 +79,24 @@ DEVICES = (
             exposure_lock=True,
         ),
     ),
+    ScannerDevice(
+        id="sim:prescan-me",
+        vendor="Simulated",
+        model="OpticFilm (multi-exposure demo)",
+        capabilities=ScannerCapabilities(
+            ir_channel=True,
+            supported_dpi=(900, 1800, 3600, 7200),
+            supported_depths=(8, 16),
+            sources=(ScanMode.TRANSPARENCY,),
+            max_area_mm=_AREA_MM,
+            prescan=True,
+            prescan_dpi=300,
+            multi_exposure=True,
+            multi_exposure_fixed=True,
+            max_n_passes=4,
+            multi_exposure_dpi=(900, 1800, 3600, 7200),
+        ),
+    ),
 )
 _BY_ID = {d.id: d for d in DEVICES}
 

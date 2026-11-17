@@ -343,7 +343,7 @@ Fjerner ujevnt lys, for eksempel mørkere hjørner, med et bilde av den bare lys
 
 Et bilde beholder sin egen profil med mindre det følger rullen, så hvert lys og filmformat kan ha én. Et nytt kamerabilde, eller et kamerabilde der profilen mangler, får den siste profilen du valgte på et kamerabilde. Et nytt bilde fra filmskanneren starter uten Optikk-korreksjoner. Med Filmskanner valgt vises dette kortet bare på et bilde som har en korreksjon.
 
-<!-- panel:sensor src:f2d1b580 -->
+<!-- panel:sensor src:4d3a55da -->
 ### 10.4 Kalibrering: farger fra skanneoppsettet ditt
 
 Korrigerer fargefeil som kommer fra lyset, kameraet og filmen din.
@@ -359,6 +359,8 @@ Korrigerer fargefeil som kommer fra lyset, kameraet og filmen din.
 *   **Matrise**: matrisene for denne filmtypen. En *(omtrentlig)* matrise kommer fra et datablad. Dine egne `.toml`-filer legges i `<Documents>/NegPy/crosstalk/` (se CROSSTALK.md). Glidebryterknappen åpner redigeringsverktøyet; **+** lager en ny matrise. NegPy har ingen medfølgende matrise for dias.
 *   **Styrke**: hvor mye av matrisen som brukes.
 *   Fargeprøveknappen åpner **Mål fra kart** (fargenegativer): den måler en matrise fra et ColorChecker 24 eller SpyderCheckr 24 fotografert på filmen. Dra de fire prikkene til hjørnefeltene.
+
+*   **Skanner-ICC** (positiv TIFF): bruker den innebygde skannerprofilen til å tolke TIFF-filens RGB-verdier. Krever en 16-bits RGB-TIFF med en skannerprofil.
 
 **Justering av fargetone** (kamera med smalbåndslys): dreier alle fargetoner, for et lys som gjør gult oransje eller grønt olivenfarget. Behold 0 for hvitt lys. I motsetning til sensorprofilen virker den også på dias.
 
@@ -559,13 +561,14 @@ NegPy holder macOS og Windows våkne mens den skanner. På Linux slår du av aut
 
 **Plustek**: OpticFilm 8200i SE, 8100 V2, 8300i SE, 7600i v1 og 7600i v2 virker; for andre modeller kan du prøve SANE. På Windows setter du først opp USB-driveren ([PLUSTEK_WINDOWS.md](PLUSTEK_WINDOWS.md)). **Coolscan**: trenger ikke SANE. På Linux krever USB en udev-regel for leverandøren `04b0`.
 
-<!-- panel:scan_quality src:1f841943 -->
+<!-- panel:scan_quality src:543ff036 -->
 ### Film og kvalitet
 
 *   **Film**: fargenegativ, S/H-negativ, dias eller Kodachrome. Den styrer bildeoppdaging, lysmåling, og om infrarødt tilbys.
 *   **Filmformat**: bildelengden (135, 66, 645 og andre). **Auto** virker der holderen bestemmer den.
 *   **Oppløsning** og **Bitdybde**: skanningens dpi og bit per kanal.
 *   **Skannemodus** (Plustek): **Flerpassering** tar gjennomsnittet av flere skanninger for mindre støy; **Adaptiv multieksponering** kombinerer en kort og en lang eksponering for større omfang, med den lange eksponeringen angitt ut fra hvert bilde; **Fast multieksponering** bruker skannerens ene lange eksponering på hvert bilde, slik SilverFast gjør (8200i SE, 8100 V2 og 8300i SE). 7600i v2 tilbyr adaptiv multieksponering, men ikke flerpassering.
+*   **Multieksponering** (Coolscan): **Av** tar én skanning. **Fast +4 EV** legger til en skanning med fire trinn mer eksponering. **Adaptiv RGB** analyserer hver fargekanal i den første skanningen og angir en egen økning på opptil +4 EV. **Adaptiv RGB +4 EV** bruker den første skanningen bare til å angi kanaleksponeringene. Den adaptive skanningen er grunnlaget, og en tredje skanning fire trinn lysere slås sammen med den. I en eksponeringsserie bruker sammenslåingen den lengre skanningen for skyggedetaljer og begrenser klipping i høylys.
 *   **Prøver** (Coolscan): leser hver linje flere ganger, for mindre støy i skyggene. Tregere.
 *   **Infrarød**: **IR** skanner en infrarød kanal, for støvfjerning på kortet Retusj. **ICE** (Coolscan) fjerner i stedet støvet i skanneren. En skanner uten ICE viser én **IR**-bryter. Ikke for S/H eller Kodachrome.
 *   **Superfin** (Coolscan): skanner én linje per passering. Tregere.

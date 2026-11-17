@@ -28,7 +28,8 @@ from PyQt6.QtWidgets import QApplication, QWidget
 from negpy.desktop.view.sidebar.scan import ScanCaptureMode, ScanSidebar, estimated_frame_bytes
 from negpy.desktop.view.styles.theme import THEME
 from negpy.infrastructure.scanners.base import ScannerCapabilities, ScannerDevice
-from negpy.infrastructure.scanners.params import FILM_TYPES, MultiExposureMode, ScanMode
+from negpy.infrastructure.scanners.params import CoolscanExposureMode, FILM_TYPES, MultiExposureMode, ScanMode
+from negpy.infrastructure.simulated.scanner import SimulatedBackend
 
 if not QApplication.instance():
     _app = QApplication(sys.argv)
@@ -110,6 +111,7 @@ NKSCAN_CAPS = ScannerCapabilities(
     film_types=tuple(FILM_TYPES),
     max_samples=16,
     superfine=True,
+    exposure_bracketing=True,
 )
 NKSCAN_DEVICE = ScannerDevice(id="usb:1-3.2", vendor="Nikon", model="LS-50", capabilities=NKSCAN_CAPS)
 
@@ -393,6 +395,17 @@ def test_fixed_me_is_offered_and_sends_fixed_mode() -> None:
     _kind, req = controller.started[0]
     assert req.params.multi_exposure_mode == MultiExposureMode.FIXED
     assert req.params.n_passes == 1
+
+
+def test_simulated_opticfilm_exposes_plustek_scan_modes() -> None:
+    device = next(device for device in SimulatedBackend().list_devices() if device.id == "sim:prescan-me")
+    sidebar, _ = _sidebar(device, settings={"backend": "sim"})
+
+    assert sidebar.mode_btn.isVisibleTo(sidebar)
+    assert sidebar.mode_btn.is_item_enabled(sidebar.mode_btn.findData(ScanCaptureMode.FIXED_ME.value))
+    assert sidebar.mode_btn.is_item_enabled(sidebar.mode_btn.findData(ScanCaptureMode.ADAPTIVE_ME.value))
+    assert sidebar.mode_btn.is_item_enabled(sidebar.mode_btn.findData(ScanCaptureMode.MULTI_PASS.value))
+    assert sidebar.mode_btn.is_item_enabled(sidebar.mode_btn.findData(ScanCaptureMode.ADAPTIVE_MULTI_PASS.value))
 
 
 def test_saved_fixed_me_restores() -> None:
@@ -809,6 +822,33 @@ def test_the_nkscan_options_reach_the_request() -> None:
     sidebar._on_scan()
     params = controller.started[-1][1].params
     assert (params.clean, params.superfine, params.samples, params.film_format) == (True, True, 4, "66")
+
+
+def test_coolscan_exposure_modes_are_a_coolscan_only_capture_option() -> None:
+    coolscan, controller = _sidebar(NKSCAN_DEVICE)
+    assert coolscan.coolscan_exposure_widget.isVisibleTo(coolscan)
+    coolscan.output.folder_edit.setText(_OUT)
+    coolscan.coolscan_exposure_btn.setCurrentIndex(coolscan.coolscan_exposure_btn.findData(CoolscanExposureMode.ADAPTIVE_RGB.value))
+    coolscan._on_scan()
+    assert controller.started[-1][1].params.coolscan_exposure_mode == CoolscanExposureMode.ADAPTIVE_RGB
+    assert coolscan.settings.coolscan_exposure_mode == CoolscanExposureMode.ADAPTIVE_RGB.value
+
+    bracketed, bracketed_controller = _sidebar(NKSCAN_DEVICE)
+    bracketed.output.folder_edit.setText(_OUT)
+    bracketed.coolscan_exposure_btn.setCurrentIndex(bracketed.coolscan_exposure_btn.findData(CoolscanExposureMode.ADAPTIVE_RGB_PLUS4.value))
+    bracketed._on_scan()
+    assert bracketed_controller.started[-1][1].params.coolscan_exposure_mode == CoolscanExposureMode.ADAPTIVE_RGB_PLUS4
+    assert bracketed.settings.coolscan_exposure_mode == CoolscanExposureMode.ADAPTIVE_RGB_PLUS4.value
+
+    plustek, _ = _sidebar(SE_DEVICE, settings={"backend": "plustek"})
+    assert plustek.coolscan_exposure_widget.isVisibleTo(plustek) is False
+
+
+def test_saved_legacy_multi_exposure_setting_selects_fixed_mode() -> None:
+    sidebar, _ = _sidebar(NKSCAN_DEVICE, settings={"multi_pass_exposure": True})
+
+    assert sidebar.coolscan_exposure_btn.currentData() == CoolscanExposureMode.FIXED.value
+    assert sidebar.settings.coolscan_exposure_mode == CoolscanExposureMode.FIXED.value
 
 
 def test_a_saved_clean_never_reaches_a_device_that_cannot_do_it() -> None:

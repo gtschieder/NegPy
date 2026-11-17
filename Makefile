@@ -1,5 +1,11 @@
 # Variables
 UV = uv run
+UV_SYNC_ALL_GROUPS = uv sync --all-groups
+
+ifneq ($(shell command -v brew 2>/dev/null),)
+HOMEBREW_PREFIX := $(shell brew --prefix)
+UV_SYNC_ALL_GROUPS = CFLAGS="$$CFLAGS -I$(HOMEBREW_PREFIX)/include" LDFLAGS="$$LDFLAGS -L$(HOMEBREW_PREFIX)/lib" uv sync --all-groups
+endif
 
 # Optional per-developer settings, not in git. The usual content is NEGPY_USER_DIR,
 # which moves the app's user directory (databases, caches, presets, logs) away from
@@ -45,13 +51,13 @@ translations-check:
 .PHONY: install
 install:
 	@echo "Installing dependencies with uv..."
-	@uv sync --all-groups
+	@$(UV_SYNC_ALL_GROUPS)
 
 # Sync dependencies
 .PHONY: sync
 sync:
 	@echo "Syncing dependencies with uv..."
-	@uv sync --all-groups
+	@$(UV_SYNC_ALL_GROUPS)
 
 # Lint checks (ruff)
 .PHONY: lint

@@ -76,6 +76,7 @@ _SENSOR_FIELDS = (
     "sensor_profile",
     "sensor_matrix",
     "sensor_unmix",
+    "use_embedded_scanner_profile",
     "crosstalk_profile",
     "crosstalk_strength",
     "crosstalk_matrix",

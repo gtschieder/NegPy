@@ -129,6 +129,8 @@ class FakeNkscanModule:
     progress_steps: int = 0
     rows: int = 8
     cols: int = 6
+    scan_values: tuple[int, int, int] = (10, 20, 30)
+    scan_value_sequence: tuple[tuple[int, int, int], ...] | None = None
     thumbnail: bool = True
     strip_slack: int = 4  # columns past the last frame; negative pushes frames off the pass
     # Not the caps' 4000 / 250, as on a real pass.
@@ -300,7 +302,12 @@ class FakeSession:
         if module.scan_error is not None:
             raise module.scan_error
         rows, cols = module.rows, module.cols
-        colors = {name: np.full((rows, cols), value, np.uint16) for name, value in (("red", 10), ("green", 20), ("blue", 30))}
+        scan_values = (
+            module.scan_value_sequence[min(len(self.scans) - 1, len(module.scan_value_sequence) - 1)]
+            if module.scan_value_sequence
+            else module.scan_values
+        )
+        colors = {name: np.full((rows, cols), value, np.uint16) for name, value in zip(("red", "green", "blue"), scan_values)}
         return FakeScanResult(
             colors=colors,
             # nkscan also reads the infrared plane to clean, and returns it.
@@ -308,7 +315,7 @@ class FakeSession:
             dpi=int(dpi or module.caps.optical_dpi),
             rows=rows,
             cols=cols,
-            exposures={"red": 1, "green": 2, "blue": 3},
+            exposures=exposures or {"red": 1, "green": 2, "blue": 3},
             cleaned=7 if clean else None,
             complete=not module.short_pass,
             blocks=1 - module.short_pass,

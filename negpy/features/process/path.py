@@ -25,6 +25,8 @@ def render_path(process: ProcessConfig) -> RenderPath:
 def positive_decode(process: ProcessConfig) -> str:
     """The Source Encoding a Positive frame's TIFF decodes by, "" off Positive. Every load
     asks this, so a Positive decode and any other one never share a cached buffer."""
+    if render_path(process) is RenderPath.POSITIVE and process.use_embedded_scanner_profile:
+        return "scanner_profile"
     return str(process.source_encoding) if render_path(process) is RenderPath.POSITIVE else ""
 
 

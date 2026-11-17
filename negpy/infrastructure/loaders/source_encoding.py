@@ -5,18 +5,22 @@ import struct
 from dataclasses import dataclass
 from typing import Optional
 
+import imagecodecs
 import negpy_core
 import numpy as np
 
 from negpy.domain.models import ColorSpace
 from negpy.features.process.models import SourceEncoding
+from negpy.infrastructure.display.color_spaces import ColorSpaceRegistry
 from negpy.infrastructure.loaders.helpers import identify_color_space_from_icc
+from negpy.kernel.image.logic import working_oetf_decode
 from negpy.kernel.system.logging import get_logger
 
 logger = get_logger(__name__)
 
 # What ran, in the loader metadata, when Auto read the file's profile or color tag.
 PROFILE = "profile"
+SCANNER_PROFILE = "scanner_profile"
 
 # Adobe RGB (1998) colorants in the D50 PCS, as the bundled AdobeCompat-v4.icc stores them
 # (tests/test_source_encoding.py reads them back from that file).
@@ -175,10 +179,38 @@ def is_device_profile(icc: Optional[bytes]) -> bool:
     return bool(icc) and len(icc) >= 16 and icc[12:16] == b"scnr"
 
 
+def decode_scanner_profile(img: np.ndarray, icc: Optional[bytes]) -> np.ndarray:
+    """Apply an embedded RGB scanner profile and return scene-linear Adobe RGB pixels."""
+    if img.dtype != np.uint16 or img.ndim != 3 or img.shape[-1] != 3:
+        raise ValueError("The embedded scanner profile requires a 16-bit RGB TIFF")
+    if icc is None or not is_device_profile(icc) or icc[16:20] != b"RGB ":
+        raise ValueError("The TIFF does not contain an RGB scanner profile")
+    working_path = ColorSpaceRegistry.get_icc_path(ColorSpace.ADOBE_RGB.value)
+    if working_path is None:
+        raise RuntimeError("The Adobe RGB working profile is unavailable")
+    try:
+        with open(working_path, "rb") as profile_file:
+            working_profile = profile_file.read()
+        encoded = imagecodecs.cms_transform(
+            np.ascontiguousarray(img),
+            icc,
+            working_profile,
+            colorspace="RGB",
+            outcolorspace="RGB",
+            intent=1,
+            flags=0x2000,
+        )
+    except Exception as exc:
+        raise ValueError(f"Could not apply the embedded scanner profile: {exc}") from exc
+    return working_oetf_decode(encoded.astype(np.float32) / np.float32(65535.0))
+
+
 def resolve_decode(encoding: str, icc: Optional[bytes], dtype: np.dtype) -> tuple[str, ProfileDecode]:
     """(what ran, the decode) for a Positive source. Auto reads the ICC profile, unless it is a
     device profile, and else takes the untagged rule;
     "srgb" names the 8-bit untagged decode."""
+    if encoding == SCANNER_PROFILE:
+        raise ValueError("The embedded scanner profile requires a 16-bit RGB TIFF")
     samples = 256 if dtype == np.uint8 else 65536
     enc = SourceEncoding(encoding)
     if enc is SourceEncoding.LINEAR:

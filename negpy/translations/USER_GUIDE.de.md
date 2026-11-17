@@ -343,7 +343,7 @@ Entfernt ungleichmäßiges Licht, zum Beispiel dunklere Ecken, mit einer Aufnahm
 
 Ein Bild behält sein eigenes Profil, solange es nicht seiner Rolle folgt. So kann jedes Licht und jedes Filmformat eines haben. Ein neues Kamerabild oder ein Kamerabild mit fehlendem Profil nimmt das Profil, das du zuletzt bei einem Kamerabild gewählt hast. Ein neues Bild vom Filmscanner beginnt ohne Optik-Korrekturen. Mit der Einstellung Filmscanner erscheint diese Karte nur bei einem Bild, das eine Korrektur hat.
 
-<!-- panel:sensor src:f2d1b580 -->
+<!-- panel:sensor src:4d3a55da -->
 ### 10.4 Kalibrierung: Farben deines Scan-Aufbaus
 
 Korrigiert Farbfehler, die von Lichtquelle, Kamera und Film kommen.
@@ -359,6 +359,8 @@ Korrigiert Farbfehler, die von Lichtquelle, Kamera und Film kommen.
 *   **Matrix**: die Matrizen für diesen Filmtyp. Eine Matrix mit *(approx)* stammt aus einem Datenblatt. Eigene `.toml`-Dateien gehören in `<Documents>/NegPy/crosstalk/` (siehe CROSSTALK.md). Die Regler-Schaltfläche öffnet den Editor. **+** erstellt eine neue Matrix. NegPy enthält keine Dia-Matrix.
 *   **Stärke**: wie stark die Matrix wirkt.
 *   Die Farbfeld-Schaltfläche öffnet **Aus Testtafel messen** (Farbnegative): Sie misst eine Matrix aus einer Aufnahme eines ColorChecker 24 oder SpyderCheckr 24 auf dem Film. Ziehe die vier Punkte auf die Eckfelder.
+
+*   **Scanner-ICC** (Positive TIFF-Datei): Verwendet das eingebettete Scannerprofil, um die RGB-Werte der TIFF-Datei zu interpretieren. Erfordert eine 16-Bit-RGB-TIFF-Datei mit Scannerprofil.
 
 **Farbton-Trimmung** (Kamera mit schmalbandigem Licht): dreht alle Farben auf dem Farbkreis, für ein Licht, das Gelb orange oder Grün oliv färbt. Lass den Wert bei weißem Licht auf 0. Sie wirkt auch bei Dias, wo das Sensor-Farbvermischungsprofil nicht wirkt.
 
@@ -559,13 +561,14 @@ NegPy hält macOS und Windows während des Scans wach. Schalte unter Linux vor e
 
 **Plustek**: Der OpticFilm 8200i SE, 8100 V2, 8300i SE, 7600i v1 und 7600i v2 funktionieren. Probiere bei anderen Modellen SANE. Richte unter Windows zuerst den USB-Treiber ein ([PLUSTEK_WINDOWS.md](PLUSTEK_WINDOWS.md)). **Coolscan**: braucht kein SANE. Unter Linux braucht USB eine udev-Regel für den Hersteller `04b0`.
 
-<!-- panel:scan_quality src:1f841943 -->
+<!-- panel:scan_quality src:543ff036 -->
 ### Film & Qualität
 
 *   **Film**: Farbnegativ, S/W-Negativ, Dia oder Kodachrome. Er bestimmt die Bilderkennung, die Messung und ob Infrarot angeboten wird.
 *   **Filmformat**: die Bildlänge (135, 66, 645 und andere). **Auto** funktioniert, wenn der Halter sie festlegt.
 *   **Auflösung** und **Bittiefe**: dpi und Bits pro Kanal des Scans.
 *   **Scanmodus** (Plustek): **Mehrfachdurchgang** mittelt mehrere Scans für weniger Rauschen. **Adaptive Mehrfachbelichtung** verbindet eine kurze und eine lange Belichtung für mehr Umfang, die lange wird für jedes Bild bestimmt. **Feste Mehrfachbelichtung** nutzt wie SilverFast bei jedem Bild die eine lange Belichtung des Scanners (8200i SE, 8100 V2 und 8300i SE). Der 7600i v2 bietet Adaptive Mehrfachbelichtung, aber keinen Mehrfachdurchgang.
+*   **Mehrfachbelichtung** (Coolscan): **Aus** nimmt einen Scan auf. **Fest +4 EV** fügt einen Scan mit vier Blendenstufen mehr Belichtung hinzu. **Adaptives RGB** analysiert jeden Farbkanal im ersten Scan und legt eine getrennte Erhöhung bis +4 EV fest. **Adaptives RGB +4 EV** nutzt den ersten Scan nur, um die Kanalbelichtungen festzulegen. Der adaptive Scan ist die Basis; ein dritter Scan mit vier Blendenstufen mehr Belichtung wird hinzugefügt. Bei einer Belichtungsreihe nutzt die Verbindung den längeren Scan für Schattendetails und begrenzt das Beschneiden der Lichter.
 *   **Samples** (Coolscan): liest jede Zeile mehrfach, für weniger Rauschen in den Schatten. Langsamer.
 *   **Infrarot**: **IR** scannt einen Infrarotkanal für die Staubentfernung auf der Karte Retusche. **ICE** (Coolscan) entfernt den Staub stattdessen im Scanner. Ein Scanner ohne ICE zeigt nur einen **IR**-Schalter. Nicht für S/W oder Kodachrome.
 *   **Superfine** (Coolscan): scannt eine Zeile pro Durchgang. Langsamer.

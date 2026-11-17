@@ -40,6 +40,7 @@ from negpy.desktop.view.widgets.step_combo import StepCombo
 from negpy.infrastructure.scanners.base import ScannerCapabilities, ScannerDevice
 from negpy.infrastructure.scanners.params import (
     ANALOG_GAIN_EV_RANGE,
+    CoolscanExposureMode,
     DEFAULT_N_PASSES,
     FILM_TYPES,
     FilmType,
@@ -342,6 +343,29 @@ class ScanSidebar(QWidget):
             self.mode_btn.set_item_tooltip(i, tip)
         self.mode_widget = self._row_widget(field_row(tr("Scan mode"), self.mode_btn))
         quality.addWidget(self.mode_widget)
+        self.coolscan_exposure_btn = StepCombo.of(
+            [tr("Off"), tr("Fixed +4 EV"), tr("Adaptive RGB"), tr("Adaptive RGB +4 EV")],
+            tr("Choose one scan, a fixed +4 EV scan, adaptive RGB, or adaptive RGB followed by a third scan four stops brighter."),
+            [
+                CoolscanExposureMode.OFF.value,
+                CoolscanExposureMode.FIXED.value,
+                CoolscanExposureMode.ADAPTIVE_RGB.value,
+                CoolscanExposureMode.ADAPTIVE_RGB_PLUS4.value,
+            ],
+        )
+        self.coolscan_exposure_btn.set_item_tooltip(0, tr("Capture one exposure."))
+        self.coolscan_exposure_btn.set_item_tooltip(1, tr("Capture a second scan at four stops above the first."))
+        self.coolscan_exposure_btn.set_item_tooltip(
+            2,
+            tr("Analyze each color channel in the first scan, then set its second exposure within the +4 EV limit."),
+        )
+        self.coolscan_exposure_btn.set_item_tooltip(
+            3,
+            tr("Use the adaptive scan as the base, then merge a third scan at +4 EV."),
+        )
+        self.coolscan_exposure_widget = self._row_widget(field_row(tr("Multi-Exposure"), self.coolscan_exposure_btn))
+        self.coolscan_exposure_widget.setVisible(False)
+        quality.addWidget(self.coolscan_exposure_widget)
         # The mode the user picked; the combo shows it masked by what the device does at this resolution.
         self._wanted_capture_mode = ScanCaptureMode.SINGLE_PASS
         self.mode_hint = hint_label("")
@@ -510,6 +534,7 @@ class ScanSidebar(QWidget):
         self.depth_btn.currentIndexChanged.connect(lambda: self._update_settings_from_ui())
         self.ir_btn.toggled.connect(self._on_ir_toggled)
         self.mode_btn.currentIndexChanged.connect(self._on_mode_changed)
+        self.coolscan_exposure_btn.currentIndexChanged.connect(lambda _index: self._update_settings_from_ui())
         self.passes_slider.valueChanged.connect(lambda _v: self._update_settings_from_ui())
         self.autofocus_btn.toggled.connect(lambda: self._update_settings_from_ui())
         self.eject_after_act.toggled.connect(lambda: self._update_settings_from_ui())
@@ -755,6 +780,7 @@ class ScanSidebar(QWidget):
         self.depth_btn.blockSignals(True)
         self.ir_btn.blockSignals(True)
         self.mode_btn.blockSignals(True)
+        self.coolscan_exposure_btn.blockSignals(True)
         self.passes_slider.blockSignals(True)
         self.ae_btn.blockSignals(True)
         self.frame_spec_edit.blockSignals(True)
@@ -813,6 +839,11 @@ class ScanSidebar(QWidget):
         show_mode = bool(caps.multi_exposure) or caps.max_n_passes > 1
         self.mode_widget.setVisible(show_mode)
         self.mode_btn.setEnabled(show_mode)
+        self.coolscan_exposure_widget.setVisible(caps.exposure_bracketing)
+        exposure_mode = self._settings.coolscan_exposure_mode
+        if exposure_mode not in {mode.value for mode in CoolscanExposureMode}:
+            exposure_mode = CoolscanExposureMode.OFF.value
+        self.coolscan_exposure_btn.setCurrentIndex(self.coolscan_exposure_btn.findData(exposure_mode))
         self._wanted_capture_mode = _capture_mode_from_params(
             MultiExposureMode(self._settings.multi_exposure_mode)
             if self._settings.multi_exposure_mode in set(MultiExposureMode)
@@ -962,6 +993,7 @@ class ScanSidebar(QWidget):
         self.depth_btn.blockSignals(False)
         self.ir_btn.blockSignals(False)
         self.mode_btn.blockSignals(False)
+        self.coolscan_exposure_btn.blockSignals(False)
         self.passes_slider.blockSignals(False)
         self.ae_btn.blockSignals(False)
         self.frame_spec_edit.blockSignals(False)
@@ -1423,6 +1455,8 @@ class ScanSidebar(QWidget):
         gain_ev, channel_gain_ev = self._analog_gain()
         if caps.analog_gain and (gain_ev or any(channel_gain_ev)):
             passes.append(tr("Analog Gain"))
+        if caps.exposure_bracketing and self.coolscan_exposure_btn.currentData() != CoolscanExposureMode.OFF.value:
+            passes.append(self.coolscan_exposure_btn.currentText())
         capture_mode = self._capture_mode()
         if capture_mode != ScanCaptureMode.SINGLE_PASS:
             mode_label = next(label for mode, label, _ in _CAPTURE_MODE_LABELS if mode == capture_mode)
@@ -1519,6 +1553,11 @@ class ScanSidebar(QWidget):
             exposures=self._locked_exposures(device),
             analog_gain_ev=self._settings.analog_gain_ev if device.capabilities.analog_gain else 0.0,
             channel_gain_ev=self._settings.channel_gain_ev if device.capabilities.analog_gain else (0.0, 0.0, 0.0),
+            coolscan_exposure_mode=(
+                CoolscanExposureMode(str(self.coolscan_exposure_btn.currentData()))
+                if device.capabilities.exposure_bracketing
+                else CoolscanExposureMode.OFF
+            ),
         )
 
         self._update_settings_from_ui()
@@ -1707,5 +1746,6 @@ class ScanSidebar(QWidget):
             eject_after_batch=self.eject_after_act.isChecked(),
             analog_gain_ev=analog_gain_ev,
             channel_gain_ev=channel_gain_ev,
+            coolscan_exposure_mode=str(self.coolscan_exposure_btn.currentData() or CoolscanExposureMode.OFF.value),
         )
         self._update_summary()

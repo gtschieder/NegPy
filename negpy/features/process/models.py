@@ -167,6 +167,7 @@ class ProcessConfig:
     # baseline lift and the filmic curve. See path.render_path and path.positive_decode.
     positive_source: bool = False
     source_encoding: SourceEncoding = SourceEncoding.AUTO
+    use_embedded_scanner_profile: bool = False
     # Render the slide in black and white: B&W reversal film, or a color slide through the
     # B&W Filter. Slide only, held in __post_init__. See path.is_mono.
     slide_bw: bool = False

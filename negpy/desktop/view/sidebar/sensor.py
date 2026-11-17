@@ -47,6 +47,13 @@ class SensorSidebar(BaseSidebar):
         self._crosstalk_dialog: Optional[QDialog] = None
         self._crosstalk_snapshot: dict = {}  # the frame's crosstalk fields when the editor opened
         self._crosstalk_previewed: dict = {}  # the fields the editor's last preview set
+        self.scanner_profile_btn = self._labeled_toggle(
+            "fa5s.camera",
+            tr("Scanner ICC"),
+            conf.use_embedded_scanner_profile,
+            tr("Use the TIFF's embedded scanner profile to interpret its RGB values."),
+        )
+        self.layout.addWidget(self.scanner_profile_btn)
 
         row = QHBoxLayout()
         self.sensor_label = field_label(tr("Profile"))
@@ -217,6 +224,7 @@ class SensorSidebar(BaseSidebar):
         self.sensor_combo.currentTextChanged.connect(self._on_sensor_profile_changed)
         self.unmix_btn.currentIndexChanged.connect(self._on_unmix_changed)
         self.calibrate_sensor_btn.clicked.connect(self._open_sensor_calibration)
+        self.scanner_profile_btn.toggled.connect(self._on_scanner_profile_toggled)
 
         self.crosstalk_combo.currentTextChanged.connect(self._on_crosstalk_profile_changed)
         self.manage_crosstalk_btn.clicked.connect(self._open_crosstalk_editor)
@@ -238,6 +246,9 @@ class SensorSidebar(BaseSidebar):
             sensor_matrix=tuple(matrix) if matrix is not None else None,
             **invalidate_local_bounds(self.state.config.process),
         )
+
+    def _on_scanner_profile_toggled(self, checked: bool) -> None:
+        self.controller.set_roll_default("sensor", use_embedded_scanner_profile=checked)
 
     def _on_unmix_changed(self, _index: int) -> None:
         self.controller.set_roll_default(
@@ -419,6 +430,8 @@ class SensorSidebar(BaseSidebar):
             self.crosstalk_strength_slider.setEnabled(has_profiles)
 
             self.hue_trim_slider.setValue(conf.hue_trim)
+            self.scanner_profile_btn.setChecked(conf.use_embedded_scanner_profile)
+            self.scanner_profile_btn.setVisible(conf.process_mode == ProcessMode.E6 and conf.positive_source)
 
             # Only a single-exposure narrowband camera rig leaks between bands or turns hues; a group
             # that holds a setting stays in view whatever the rig.
@@ -432,7 +445,10 @@ class SensorSidebar(BaseSidebar):
 
     def has_controls(self) -> bool:
         """Whether any group shows, so the card can hide when the rig and film leave it empty."""
-        return any(not w.isHidden() for w in (self.narrowband_fold.content, self.light_fold.content, self.crosstalk_header))
+        return any(
+            not w.isHidden()
+            for w in (self.scanner_profile_btn, self.narrowband_fold.content, self.light_fold.content, self.crosstalk_header)
+        )
 
     def block_signals(self, blocked: bool) -> None:
         for w in (
@@ -441,5 +457,6 @@ class SensorSidebar(BaseSidebar):
             self.crosstalk_combo,
             self.crosstalk_strength_slider,
             self.hue_trim_slider,
+            self.scanner_profile_btn,
         ):
             w.blockSignals(blocked)

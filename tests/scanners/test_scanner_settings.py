@@ -7,6 +7,7 @@ from negpy.infrastructure.scanners.settings import (
     parse_frame_spec,
     resolve_batch_selection,
 )
+from negpy.infrastructure.scanners.params import CoolscanExposureMode
 
 
 def test_scan_window_default_is_none():
@@ -33,6 +34,18 @@ def test_channel_gain_json_roundtrip_yields_tuple():
     assert restored.channel_gain_ev == (0.8, 0.0, -0.2)
     assert isinstance(restored.channel_gain_ev, tuple)
     assert restored == original
+
+
+def test_coolscan_exposure_mode_defaults_off_and_round_trips():
+    assert ScannerSettings.defaults().coolscan_exposure_mode == CoolscanExposureMode.OFF.value
+    original = ScannerSettings(coolscan_exposure_mode=CoolscanExposureMode.ADAPTIVE_RGB.value)
+    restored = ScannerSettings.from_dict(json.loads(json.dumps(asdict(original))))
+    assert restored.coolscan_exposure_mode == CoolscanExposureMode.ADAPTIVE_RGB.value
+
+
+def test_legacy_multi_pass_exposure_setting_migrates_to_fixed_mode():
+    assert ScannerSettings.from_dict({"multi_pass_exposure": True}).coolscan_exposure_mode == CoolscanExposureMode.FIXED.value
+    assert ScannerSettings.from_dict({"multi_pass_exposure": False}).coolscan_exposure_mode == CoolscanExposureMode.OFF.value
 
 
 def test_backend_survives_json_roundtrip():

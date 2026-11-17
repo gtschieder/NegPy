@@ -20,7 +20,7 @@ The `negpy_core/` folder is a Rust library with NegPy's CPU kernels. The first `
 
 Scanner support (optional):
 
-- **SANE** (Linux/macOS): Coolscans and other SANE film scanners. Install the system library, then the `sane` group (`uv sync --group sane` or `pip install negpy[sane]`):
+- **SANE** (Linux/macOS): Coolscans and other SANE film scanners. `make install` includes the `sane` group, so install the system library first. Homebrew include and library paths are added automatically when you run `make install` on macOS:
   - **Linux**:
     ```bash
     sudo pacman -S sane  # arch

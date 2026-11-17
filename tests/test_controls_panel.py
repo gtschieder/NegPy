@@ -483,6 +483,7 @@ def test_the_calibration_reset_clears_the_unmix_matrices():
             cfg.process,
             sensor_profile="custom",
             sensor_matrix=(1.0, -0.1, 0.0, -0.1, 1.0, -0.1, 0.0, -0.1, 1.0),
+            use_embedded_scanner_profile=True,
             crosstalk_matrix=(1.0, -0.05, 0.0, -0.2, 1.0, -0.05, 0.0, -0.1, 1.0),
             crosstalk_process=ProcessMode.E6,
         ),
@@ -491,7 +492,7 @@ def test_the_calibration_reset_clears_the_unmix_matrices():
     ControlsPanel._reset_process_fields(panel, _SENSOR_FIELDS)
 
     after = panel.controller.apply_config.call_args[0][0].process
-    for field in ("sensor_profile", "sensor_matrix", "crosstalk_matrix", "crosstalk_process"):
+    for field in ("sensor_profile", "sensor_matrix", "use_embedded_scanner_profile", "crosstalk_matrix", "crosstalk_process"):
         assert getattr(after, field) == getattr(DEFAULT_WORKSPACE_CONFIG.process, field), field
 
 

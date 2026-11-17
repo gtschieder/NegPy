@@ -16,6 +16,7 @@ import time
 import weakref
 from collections.abc import Callable
 from contextlib import contextmanager, suppress
+from dataclasses import replace
 from typing import Any, Iterator
 
 import numpy as np
@@ -29,8 +30,12 @@ from negpy.infrastructure.scanners.base import (
     TransientScanError,
 )
 from negpy.infrastructure.scanners.params import (
+    ADAPTIVE_RGB_HIGHLIGHT_LIMIT,
+    ADAPTIVE_RGB_SHADOW_TARGET,
     ANALOG_GAIN_EV_RANGE,
+    COOLSCAN_MAX_EXPOSURE_INCREASE_EV,
     FILM_TYPES,
+    CoolscanExposureMode,
     ScanMode,
     ScanParams,
     dpi_stops_in_range,
@@ -112,6 +117,7 @@ def _caps_for(caps: Any) -> ScannerCapabilities:
         superfine=bool(caps.multi_line),
         exposure_lock=True,
         analog_gain=True,
+        exposure_bracketing=True,
     )
 
 
@@ -141,6 +147,8 @@ def _progress_bridge(progress: Callable[..., None] | None, cancel: threading.Eve
 
 
 def _validate_params(params: ScanParams) -> None:
+    if params.coolscan_exposure_mode not in set(CoolscanExposureMode):
+        raise RuntimeError(f"Unknown Coolscan Multi-Exposure mode {params.coolscan_exposure_mode!r}")
     samples = int(params.samples)
     if not 1 <= samples <= _MAX_SAMPLES:
         raise RuntimeError(f"Samples must be 1..{_MAX_SAMPLES}, not {samples}")
@@ -217,6 +225,53 @@ def _stack_rgb(colors: dict[str, np.ndarray]) -> np.ndarray:
             raise RuntimeError("The scan returned no image planes")
         planes = [next(iter(colors.values()))] * 3
     return np.stack(planes, axis=-1)
+
+
+def adaptive_rgb_exposures(rgb: np.ndarray, exposures: dict[str, int]) -> dict[str, int]:
+    """Choose per-channel exposure increases from shadow signal and highlight headroom."""
+    if rgb.ndim != 3 or rgb.shape[-1] != 3 or rgb.dtype != np.uint16:
+        raise RuntimeError("Adaptive RGB exposure requires a 16-bit RGB scan")
+    channels = ("red", "green", "blue")
+    if any(name not in exposures or exposures[name] <= 0 for name in channels):
+        raise RuntimeError("Adaptive RGB exposure requires positive exposure values for all color channels")
+
+    stride = max(1, int(np.ceil(np.sqrt(rgb.shape[0] * rgb.shape[1] / 1_000_000))))
+    sample = rgb[::stride, ::stride].reshape(-1, 3)
+    if sample.size == 0:
+        raise RuntimeError("Adaptive RGB exposure cannot analyze an empty scan")
+    shadow = np.percentile(sample, 5.0, axis=0)
+    highlight = np.percentile(sample, 99.0, axis=0)
+    out = {str(name): int(value) for name, value in exposures.items()}
+    for channel, index in zip(channels, range(3)):
+        shadow_ratio = ADAPTIVE_RGB_SHADOW_TARGET / max(float(shadow[index]), 1.0)
+        highlight_ratio = ADAPTIVE_RGB_HIGHLIGHT_LIMIT / max(float(highlight[index]), 1.0)
+        ratio = max(1.0, min(2.0**COOLSCAN_MAX_EXPOSURE_INCREASE_EV, shadow_ratio, highlight_ratio))
+        out[channel] = max(1, int(round(exposures[channel] * ratio)))
+    return out
+
+
+def _merge_exposure_scans(short: ScanResult, long: ScanResult) -> np.ndarray:
+    """Use the longer exposure in shadows, then fade to the base scan before it clips."""
+    if short.rgb.shape != long.rgb.shape or short.rgb.ndim != 3 or short.rgb.shape[-1] != 3:
+        raise RuntimeError("Multi-Exposure scans returned different image shapes")
+    if not short.exposures or not long.exposures:
+        raise RuntimeError("Multi-Exposure requires exposure values from both scans")
+
+    channels = ("red", "green", "blue")
+    if any(name not in short.exposures or name not in long.exposures for name in channels):
+        raise RuntimeError("Multi-Exposure requires exposure values for all three color channels")
+    if any(short.exposures[name] <= 0 or long.exposures[name] <= 0 for name in channels):
+        raise RuntimeError("Multi-Exposure scans returned invalid exposure values")
+    ratios = np.array([long.exposures[name] / short.exposures[name] for name in channels], dtype=np.float32)
+
+    short_rgb = short.rgb.astype(np.float32)
+    long_rgb = long.rgb.astype(np.float32)
+    normalized_long = long_rgb / ratios
+    signal = long_rgb / np.iinfo(np.uint16).max
+    weight = np.clip((1.0 - signal) / 0.25, 0.0, 1.0)
+    weight = weight * weight * (3.0 - 2.0 * weight)
+    merged = short_rgb * (1.0 - weight) + normalized_long * weight
+    return np.rint(np.clip(merged, 0, np.iinfo(np.uint16).max)).astype(np.uint16)
 
 
 class NkscanSession:
@@ -509,7 +564,44 @@ class NkscanBackend:
         if result.cleaned:
             logger.info("Dust removal rebuilt %d pixels", result.cleaned)
         # ICE reads the infrared plane to clean the frame. Keep it only when the scan asks for IR.
-        return self._to_result(result, model, self._profile(session, params.film_type), keep_ir=bool(params.capture_ir))
+        first = self._to_result(result, model, self._profile(session, params.film_type), keep_ir=bool(params.capture_ir))
+        if params.coolscan_exposure_mode == CoolscanExposureMode.OFF:
+            return first
+        if not first.exposures:
+            raise RuntimeError("Multi-Exposure requires exposure values from the first scan")
+
+        adaptive = params.coolscan_exposure_mode in {
+            CoolscanExposureMode.ADAPTIVE_RGB,
+            CoolscanExposureMode.ADAPTIVE_RGB_PLUS4,
+        }
+        if adaptive:
+            long_exposures = adaptive_rgb_exposures(first.rgb, first.exposures)
+            logger.info("Adaptive RGB Multi-Exposure selected exposures %s", long_exposures)
+        else:
+            long_exposures = gained_exposures(first.exposures, COOLSCAN_MAX_EXPOSURE_INCREASE_EV, (0.0, 0.0, 0.0))
+        long_params = replace(
+            params,
+            exposures=long_exposures,
+            analog_gain_ev=0.0,
+            channel_gain_ev=(0.0, 0.0, 0.0),
+            capture_ir=False,
+            coolscan_exposure_mode=CoolscanExposureMode.OFF,
+        )
+        second = self._scan_on_session(session, device_id, model, long_params, progress, cancel, exposures=long_exposures)
+        if params.coolscan_exposure_mode == CoolscanExposureMode.ADAPTIVE_RGB_PLUS4:
+            if not second.exposures:
+                raise RuntimeError("Adaptive RGB +4 EV requires exposure values from the adaptive scan")
+            third_exposures = gained_exposures(second.exposures, COOLSCAN_MAX_EXPOSURE_INCREASE_EV, (0.0, 0.0, 0.0))
+            logger.info("Adaptive RGB +4 EV Multi-Exposure selected exposures %s", third_exposures)
+            third_params = replace(long_params, exposures=third_exposures)
+            third = self._scan_on_session(session, device_id, model, third_params, progress, cancel, exposures=third_exposures)
+            return replace(
+                second,
+                rgb=_merge_exposure_scans(second, third),
+                ir=first.ir,
+                ir_valid_mask=first.ir_valid_mask,
+            )
+        return replace(first, rgb=_merge_exposure_scans(first, second))
 
     def meter(
         self,
